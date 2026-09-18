@@ -1,21 +1,24 @@
 {
   "name": "thekartavyamovement-backend",
   "version": "1.0.0",
-  "description": "Backend API for The Kartavya Movement website — handles contact form enquiries, stores them in MySQL, and sends email notifications.",
+  "description": "Backend API for The Kartavya Movement website — handles contact form enquiries, stores them in MySQL or PostgreSQL, and sends email notifications.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "db:setup": "node src/database/setup.js"
+    "db:setup": "node src/database/setup.js",
+    "db:setup:mysql": "DB_DRIVER=mysql node src/database/setup.js",
+    "db:setup:postgres": "DB_DRIVER=postgres node src/database/setup.js"
   },
   "dependencies": {
     "cors": "2.8.5",
     "dotenv": "16.4.5",
-    "express": "4.19.2",
+    "express": "4.22.3",
     "express-rate-limit": "7.3.1",
-    "express-validator": "7.1.0",
-    "mysql2": "3.9.7",
-    "nodemailer": "6.9.13"
+    "express-validator": "7.3.2",
+    "mysql2": "3.24.4",
+    "nodemailer": "10.0.10",
+    "pg": "8.12.0"
   },
   "devDependencies": {
     "nodemon": "3.1.3"

@@ -1,44 +1,52 @@
 'use strict';
 
-const pool = require('../config/db');
+/**
+ * Enquiry controller — fully driver-agnostic.
+ *
+ * This file NEVER imports mysql2 or pg directly.
+ * All database access goes through the unified adapter in src/config/db.js,
+ * which routes to the correct driver (MySQL or PostgreSQL) based on DB_DRIVER.
+ *
+ * SQL fragments are built by db.getSql() so dialect differences (placeholders,
+ * RETURNING, LEFT vs SUBSTRING, COUNT casting, etc.) are handled transparently.
+ */
+
+const db = require('../config/db');
 const { sendEnquiryEmails } = require('../services/emailService');
 
+// ── POST /api/enquiries ────────────────────────────────────────────────────
 /**
- * POST /api/enquiries
- * Saves a new contact form enquiry to MySQL and fires notification emails.
+ * Save a new contact form enquiry and fire notification emails.
  */
 async function createEnquiry(req, res, next) {
   const { name, email, subject, message } = req.body;
+  const sql = db.getSql();
 
-  // Capture submitter metadata for audit trail
   const ip_address =
     req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
     req.socket?.remoteAddress ||
     null;
   const user_agent = req.headers['user-agent']?.substring(0, 512) || null;
 
-  let conn;
+  let client;
   try {
-    conn = await pool.getConnection();
+    client = await db.getClient();
 
-    const [result] = await conn.execute(
-      `INSERT INTO enquiries (name, email, subject, message, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, email, subject, message, ip_address, user_agent]
-    );
+    // Insert the row ─────────────────────────────────────────────────────────
+    const insertResult = await client.query(sql.INSERT_ENQUIRY, [
+      name, email, subject, message, ip_address, user_agent,
+    ]);
 
-    const enquiryId = result.insertId;
+    // PostgreSQL: insertId comes from RETURNING id (first row)
+    // MySQL:      insertId comes from OkPacket.insertId
+    const enquiryId = insertResult.insertId;
 
-    // Fetch the full row so we have created_at for the email
-    const [rows] = await conn.execute(
-      `SELECT id, name, email, subject, message, created_at FROM enquiries WHERE id = ?`,
-      [enquiryId]
-    );
+    // Fetch full row for email (has created_at) ───────────────────────────────
+    const selectResult = await client.query(sql.SELECT_BY_ID, [enquiryId]);
+    client.release();
 
-    conn.release();
-
-    const enquiry = rows[0];
-    console.log(`[ENQUIRY] New enquiry #${enquiryId} saved — from: ${email}`);
+    const enquiry = selectResult.rows[0];
+    console.log(`[ENQUIRY] #${enquiryId} saved (${db.driver}) — from: ${email}`);
 
     // Fire emails asynchronously — don't block the HTTP response
     sendEnquiryEmails(enquiry).catch((err) => {
@@ -51,51 +59,43 @@ async function createEnquiry(req, res, next) {
       data: { id: enquiryId },
     });
   } catch (err) {
-    if (conn) conn.release();
+    if (client) client.release();
     next(err);
   }
 }
 
+// ── GET /api/enquiries ─────────────────────────────────────────────────────
 /**
- * GET /api/enquiries
- * Returns a paginated list of all enquiries (for internal/admin use).
- * Supports ?page=1&limit=20&status=new query params.
+ * Paginated list of enquiries.
+ * Query params: ?page=1 &limit=20 &status=new
  */
 async function listEnquiries(req, res, next) {
-  const page   = Math.max(1, parseInt(req.query.page  || '1',  10));
+  const page   = Math.max(1, parseInt(req.query.page   || '1',  10));
   const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
   const status = req.query.status || null;
   const offset = (page - 1) * limit;
+  const sql    = db.getSql();
 
-  let conn;
+  let client;
   try {
-    conn = await pool.getConnection();
+    client = await db.getClient();
 
-    const whereClause = status ? 'WHERE status = ?' : '';
-    const params      = status ? [status, limit, offset] : [limit, offset];
+    // Build param arrays — status comes first when present
+    const listParams  = status ? [status, limit, offset] : [limit, offset];
+    const countParams = status ? [status] : [];
 
-    const [rows] = await conn.execute(
-      `SELECT id, name, email, subject, LEFT(message, 120) AS message_preview,
-              status, ip_address, created_at, updated_at
-       FROM enquiries
-       ${whereClause}
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      params
-    );
+    const [listResult, countResult] = await Promise.all([
+      client.query(sql.SELECT_PAGE(!!status), listParams),
+      client.query(sql.COUNT(!!status),       countParams),
+    ]);
 
-    const [countRows] = await conn.execute(
-      `SELECT COUNT(*) AS total FROM enquiries ${whereClause}`,
-      status ? [status] : []
-    );
+    client.release();
 
-    conn.release();
-
-    const total = countRows[0].total;
+    const total = sql.getTotal(countResult.rows[0]);
 
     return res.status(200).json({
       success: true,
-      data: rows,
+      data: listResult.rows,
       pagination: {
         total,
         page,
@@ -104,14 +104,14 @@ async function listEnquiries(req, res, next) {
       },
     });
   } catch (err) {
-    if (conn) conn.release();
+    if (client) client.release();
     next(err);
   }
 }
 
+// ── GET /api/enquiries/:id ─────────────────────────────────────────────────
 /**
- * GET /api/enquiries/:id
- * Returns a single enquiry by ID and marks it as 'read' if it was 'new'.
+ * Fetch a single enquiry. Auto-marks 'new' → 'read' on first view.
  */
 async function getEnquiry(req, res, next) {
   const id = parseInt(req.params.id, 10);
@@ -119,40 +119,35 @@ async function getEnquiry(req, res, next) {
     return res.status(400).json({ success: false, message: 'Invalid enquiry ID.' });
   }
 
-  let conn;
-  try {
-    conn = await pool.getConnection();
+  const sql = db.getSql();
+  let client;
 
-    const [rows] = await conn.execute(
-      `SELECT * FROM enquiries WHERE id = ?`,
-      [id]
-    );
+  try {
+    client = await db.getClient();
+
+    const { rows } = await client.query(sql.SELECT_BY_ID, [id]);
 
     if (!rows.length) {
-      conn.release();
+      client.release();
       return res.status(404).json({ success: false, message: `Enquiry #${id} not found.` });
     }
 
-    // Auto-mark as read
     if (rows[0].status === 'new') {
-      await conn.execute(
-        `UPDATE enquiries SET status = 'read' WHERE id = ? AND status = 'new'`,
-        [id]
-      );
+      await client.query(sql.MARK_READ, [id]);
     }
 
-    conn.release();
+    client.release();
 
     return res.status(200).json({ success: true, data: rows[0] });
   } catch (err) {
-    if (conn) conn.release();
+    if (client) client.release();
     next(err);
   }
 }
 
+// ── PATCH /api/enquiries/:id/status ───────────────────────────────────────
 /**
- * PATCH /api/enquiries/:id/status
- * Updates the workflow status of an enquiry.
+ * Update the workflow status of an enquiry.
  * Body: { "status": "replied" }
  */
 async function updateEnquiryStatus(req, res, next) {
@@ -170,18 +165,16 @@ async function updateEnquiryStatus(req, res, next) {
     });
   }
 
-  let conn;
+  const sql = db.getSql();
+  let client;
+
   try {
-    conn = await pool.getConnection();
+    client = await db.getClient();
 
-    const [result] = await conn.execute(
-      `UPDATE enquiries SET status = ? WHERE id = ?`,
-      [status, id]
-    );
+    const result = await client.query(sql.UPDATE_STATUS, [status, id]);
+    client.release();
 
-    conn.release();
-
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: `Enquiry #${id} not found.` });
     }
 
@@ -190,7 +183,7 @@ async function updateEnquiryStatus(req, res, next) {
       message: `Enquiry #${id} status updated to '${status}'.`,
     });
   } catch (err) {
-    if (conn) conn.release();
+    if (client) client.release();
     next(err);
   }
 }

@@ -13,47 +13,73 @@ services:
     runtime: node
     region: singapore          # closest to Mumbai — change to oregon/frankfurt if preferred
     plan: free                 # upgrade to starter ($7/mo) for always-on; free tier spins down after 15 min inactivity
-    branch: main               # deploy from the main branch
-    rootDir: .                 # render.yaml is at the repo root
+    branch: main
+    rootDir: .
 
-    buildCommand: npm ci       # clean install — faster and more reliable than npm install in CI
-    startCommand: npm start    # runs: node src/server.js
+    buildCommand: npm ci
+    startCommand: npm start
 
-    healthCheckPath: /health   # Render pings this to confirm the service is up
+    healthCheckPath: /health
 
-    # ── Environment variables ─────────────────────────────────────────────
-    # Values marked sync:false must be set manually in the Render dashboard
-    # (Dashboard → your service → Environment → Add Environment Variable).
+    # ── Environment variables ─────────────────────────────────────────────────
+    # Values marked sync:false must be set manually in the Render dashboard.
+    # (Dashboard → your service → Environment → Add Environment Variable)
     # They are listed here for documentation — Render will NOT auto-populate them.
     envVars:
       - key: NODE_ENV
         value: production
 
       - key: PORT
-        value: 10000            # Render internally uses 10000; $PORT env var is set automatically too
+        value: "10000"          # Render's internal port ($PORT is also set automatically)
 
-      # ── CORS ──────────────────────────────────────────────────────────────
-      # Set to your production frontend domain, e.g. https://thekartavyamovement.org
+      # ── CORS ────────────────────────────────────────────────────────────────
       - key: ALLOWED_ORIGINS
-        sync: false             # ← set manually in Render dashboard
+        sync: false             # e.g. https://thekartavyamovement.org
 
-      # ── MySQL ─────────────────────────────────────────────────────────────
-      # Use an external MySQL host (PlanetScale, Railway, Aiven, your VPS, etc.)
-      # Render does not offer a managed MySQL service natively.
-      - key: DB_HOST
-        sync: false
-      - key: DB_PORT
-        value: 3306
-      - key: DB_NAME
-        sync: false
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
-        sync: false
+      # ── Database driver ──────────────────────────────────────────────────────
+      # Change this one value to switch databases:
+      #   mysql    → uses mysql2 (DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD)
+      #   postgres → uses pg    (DATABASE_URL  -OR-  DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD)
+      - key: DB_DRIVER
+        value: postgres         # ← recommended for Render; swap to mysql if using an external MySQL host
+
+      # ── PostgreSQL (DB_DRIVER=postgres) ──────────────────────────────────────
+      # Option A: single DATABASE_URL (Render Postgres, Supabase, Neon, Railway all supply this)
+      - key: DATABASE_URL
+        sync: false             # paste the full postgres://... connection string here
+
+      # Option B: individual vars (uncomment if not using DATABASE_URL)
+      # - key: DB_HOST
+      #   sync: false
+      # - key: DB_PORT
+      #   value: "5432"
+      # - key: DB_NAME
+      #   sync: false
+      # - key: DB_USER
+      #   sync: false
+      # - key: DB_PASSWORD
+      #   sync: false
+      # - key: DB_SSL
+      #   value: "true"
+
+      # ── MySQL (DB_DRIVER=mysql) ───────────────────────────────────────────────
+      # Uncomment these and set DB_DRIVER=mysql if using an external MySQL host
+      # (PlanetScale, Aiven, Railway MySQL, your own VPS, etc.)
+      # - key: DB_HOST
+      #   sync: false
+      # - key: DB_PORT
+      #   value: "3306"
+      # - key: DB_NAME
+      #   sync: false
+      # - key: DB_USER
+      #   sync: false
+      # - key: DB_PASSWORD
+      #   sync: false
+
       - key: DB_CONNECTION_LIMIT
         value: "5"              # keep low on free/starter plans
 
-      # ── SMTP (Gmail App Password) ─────────────────────────────────────────
+      # ── SMTP (Gmail App Password) ────────────────────────────────────────────
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -61,11 +87,11 @@ services:
       - key: SMTP_SECURE
         value: "false"
       - key: SMTP_USER
-        sync: false             # e.g. thekartavyamovement@gmail.com
+        sync: false             # thekartavyamovement@gmail.com
       - key: SMTP_PASS
         sync: false             # Gmail App Password (16 chars, no spaces)
 
-      # ── Email recipients ───────────────────────────────────────────────────
+      # ── Email recipients ─────────────────────────────────────────────────────
       - key: NOTIFY_EMAIL_1
         value: connect@thekartavyamovement.org
       - key: NOTIFY_EMAIL_2
