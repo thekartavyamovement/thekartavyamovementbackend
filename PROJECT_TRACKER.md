@@ -84,6 +84,7 @@ Content-Type: application/json
 | 2026-09-17 | Submitter acknowledgement email           | Auto-reply to form submitter               |
 | 2026-09-17 | MySQL schema + setup script               | `npm run db:setup`                         |
 | 2026-09-17 | `memory.md` written                       | Full architecture reference                |
+| 2026-09-17 | Render deployment config                  | `render.yaml`, `trust proxy`, `0.0.0.0` bind |
 
 ### ✅ Frontend (thekartavyamovement)
 
@@ -104,13 +105,15 @@ Content-Type: application/json
 
 | Priority | Task                                                   | Notes                                           |
 |----------|--------------------------------------------------------|-------------------------------------------------|
+| 🔴 High  | Set all `sync: false` env vars in Render dashboard     | DB_HOST/NAME/USER/PASS, SMTP_USER, SMTP_PASS, ALLOWED_ORIGINS |
+| 🔴 High  | Provision a MySQL host (PlanetScale / Railway / Aiven) | Render has no native MySQL                      |
+| 🔴 High  | Run `npm run db:setup` against the production DB       | Creates schema before first deploy              |
 | 🔴 High  | Secure admin endpoints with API key or JWT             | GET/PATCH routes currently open                 |
-| 🟡 Med   | Deploy to a Node.js host (Render, Railway, VPS)        | Set `NODE_ENV=production`, configure reverse proxy |
-| 🟡 Med   | Set up PM2 or similar process manager for production   | Auto-restart on crash                           |
+| 🟡 Med   | Upgrade Render plan to Starter ($7/mo)                 | Free tier cold-starts after 15 min idle         |
+| 🟡 Med   | Set up PM2 or similar if moving off Render             | Render manages restarts natively                |
 | 🟢 Low   | Email queue with retry logic (Bull/BullMQ + Redis)     | Better reliability for SMTP failures            |
 | 🟢 Low   | Admin dashboard / simple UI to view enquiries          | Could be a separate internal Angular page       |
 | 🟢 Low   | Move to SendGrid / Postmark for production email       | Better deliverability than direct Gmail SMTP    |
-| 🟢 Low   | Add `phone` field to form + DB if needed in future     | Not currently in the contact form               |
 
 ### Frontend
 

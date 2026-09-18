@@ -22,6 +22,11 @@ if (missing.length) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ── Trust Render's reverse proxy ───────────────────────────────────────────
+// Required so express-rate-limit sees the real client IP (X-Forwarded-For)
+// and req.ip is correct. Render places exactly one proxy in front of the app.
+app.set('trust proxy', 1);
+
 // ── CORS ───────────────────────────────────────────────────────────────────
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
@@ -80,7 +85,8 @@ app.use((_req, res) => {
 app.use(errorHandler);
 
 // ── Start server ───────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+// Bind to 0.0.0.0 so Render's infrastructure can reach the process.
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] The Kartavya Movement API listening on port ${PORT}`);
   console.log(`[SERVER] Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`[SERVER] Health check: http://localhost:${PORT}/health`);

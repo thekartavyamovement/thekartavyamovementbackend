@@ -1,0 +1,74 @@
+# ============================================================
+#  render.yaml — Render Infrastructure-as-Code
+#  Docs: https://render.com/docs/infrastructure-as-code
+#
+#  This file lets Render auto-configure the service when you
+#  connect the repository. You can also configure everything
+#  manually via the Render dashboard if you prefer.
+# ============================================================
+
+services:
+  - type: web
+    name: thekartavyamovement-backend
+    runtime: node
+    region: singapore          # closest to Mumbai — change to oregon/frankfurt if preferred
+    plan: free                 # upgrade to starter ($7/mo) for always-on; free tier spins down after 15 min inactivity
+    branch: main               # deploy from the main branch
+    rootDir: .                 # render.yaml is at the repo root
+
+    buildCommand: npm ci       # clean install — faster and more reliable than npm install in CI
+    startCommand: npm start    # runs: node src/server.js
+
+    healthCheckPath: /health   # Render pings this to confirm the service is up
+
+    # ── Environment variables ─────────────────────────────────────────────
+    # Values marked sync:false must be set manually in the Render dashboard
+    # (Dashboard → your service → Environment → Add Environment Variable).
+    # They are listed here for documentation — Render will NOT auto-populate them.
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000            # Render internally uses 10000; $PORT env var is set automatically too
+
+      # ── CORS ──────────────────────────────────────────────────────────────
+      # Set to your production frontend domain, e.g. https://thekartavyamovement.org
+      - key: ALLOWED_ORIGINS
+        sync: false             # ← set manually in Render dashboard
+
+      # ── MySQL ─────────────────────────────────────────────────────────────
+      # Use an external MySQL host (PlanetScale, Railway, Aiven, your VPS, etc.)
+      # Render does not offer a managed MySQL service natively.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 3306
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_CONNECTION_LIMIT
+        value: "5"              # keep low on free/starter plans
+
+      # ── SMTP (Gmail App Password) ─────────────────────────────────────────
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false             # e.g. thekartavyamovement@gmail.com
+      - key: SMTP_PASS
+        sync: false             # Gmail App Password (16 chars, no spaces)
+
+      # ── Email recipients ───────────────────────────────────────────────────
+      - key: NOTIFY_EMAIL_1
+        value: connect@thekartavyamovement.org
+      - key: NOTIFY_EMAIL_2
+        value: thekartavyamovement@gmail.com
+      - key: FROM_EMAIL
+        value: '"The Kartavya Movement" <thekartavyamovement@gmail.com>'

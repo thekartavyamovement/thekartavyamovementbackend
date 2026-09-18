@@ -244,7 +244,56 @@ Key frontend files that interact with this API:
 
 ---
 
-## 11. Known Limitations & Future Work
+## 11. Render Deployment
+
+### Files
+| File | Purpose |
+|------|---------|
+| `render.yaml` | Infrastructure-as-code — auto-configures the Render service |
+| `src/server.js` | Binds to `0.0.0.0`; sets `trust proxy 1` for correct IP handling |
+
+### Step-by-step
+
+1. **Push this folder to a GitHub/GitLab repository** (it already has a `.git` init).
+2. Go to [render.com](https://render.com) → New → Web Service.
+3. Connect your GitHub account and select the repo.
+4. Render detects `render.yaml` automatically. Confirm:
+   - **Build command:** `npm ci`
+   - **Start command:** `npm start`
+   - **Region:** Singapore (closest to Mumbai)
+5. In **Environment → Environment Variables**, add the secrets marked `sync: false` in `render.yaml`:
+   - `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` — your MySQL host credentials
+   - `SMTP_USER` — `thekartavyamovement@gmail.com`
+   - `SMTP_PASS` — Gmail App Password
+   - `ALLOWED_ORIGINS` — `https://thekartavyamovement.org`
+6. Click **Create Web Service**. Render runs `npm ci` then `npm start`.
+7. Your API will be live at: `https://thekartavyamovement-backend.onrender.com`
+
+### MySQL on Render
+Render has no native MySQL service. Recommended free options:
+- **[PlanetScale](https://planetscale.com)** — serverless MySQL, free tier available
+- **[Aiven](https://aiven.io)** — managed MySQL, free trial
+- **[Railway](https://railway.app)** — MySQL plugin, ~$5/mo
+- Your own VPS MySQL if already set up
+
+Run `npm run db:setup` once locally pointing at the remote DB to create the schema, then deploy.
+
+### Free tier note
+Render's free tier spins the service down after 15 minutes of inactivity. The first request after a cold start takes ~30 seconds. Upgrade to the **Starter plan ($7/mo)** for always-on behaviour.
+
+### After deployment — update the frontend
+Set the production API URL in the Angular app:
+```typescript
+// src/environments/environment.production.ts
+export const environment = {
+  production: true,
+  apiUrl: 'https://thekartavyamovement-backend.onrender.com',
+};
+```
+
+---
+
+## 12. Known Limitations & Future Work
 
 - [ ] No authentication on GET/PATCH admin endpoints — add API key or JWT before exposing publicly
 - [ ] No pagination UI on the admin side — a simple admin dashboard would help
